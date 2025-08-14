@@ -1,10 +1,11 @@
-use std::collections::LinkedList;
+use std::collections::VecDeque;
 use piston_window::{Context, G2d};
 use piston_window::types::Color;
 
 use crate::draw::draw_block;
 
 const SNAKE_COLOR: Color = [0.00, 0.80, 0.00, 1.0];
+
 #[derive(Copy, Clone, PartialEq)]
 pub enum Direction {
     Up,
@@ -23,6 +24,7 @@ impl Direction {
         }
     }
 }
+
 #[derive(Debug, Clone)]
 struct Block {
     x: i32,
@@ -31,25 +33,16 @@ struct Block {
 
 pub struct Snake {
     direction: Direction,
-    body: LinkedList<Block>,
+    body: VecDeque<Block>,
     tail: Option<Block>,
 }
 
 impl Snake {
     pub fn new(x: i32, y: i32) -> Snake {
-        let mut body: LinkedList<Block> = LinkedList::new();
-        body.push_back(Block {
-            x: x + 2,
-            y,
-        });
-        body.push_back(Block {
-            x: x + 1,
-            y,
-        });
-        body.push_back(Block {
-            x,
-            y,
-        });
+        let mut body = VecDeque::new();
+        body.push_back(Block { x: x + 2, y });
+        body.push_back(Block { x: x + 1, y });
+        body.push_back(Block { x, y });
 
         Snake {
             direction: Direction::Right,
@@ -65,39 +58,28 @@ impl Snake {
     }
 
     pub fn head_position(&self) -> (i32, i32) {
-        let head_block = self.body.front().unwrap();
-        (head_block.x, head_block.y)
+        let head = &self.body[0];
+        (head.x, head.y)
     }
 
     pub fn move_forward(&mut self, dir: Option<Direction>) {
-        match dir {
-            Some(d) => self.direction = d,
-            None => (),
+        if let Some(d) = dir {
+            self.direction = d;
         }
 
-        let (last_x, last_y): (i32, i32) = self.head_position();
-
-        let new_block = match self.direction {
-            Direction::Up => Block {
-                x: last_x,
-                y: last_y - 1,
-            },
-            Direction::Down => Block {
-                x: last_x,
-                y: last_y + 1,
-            },
-            Direction::Left => Block {
-                x: last_x - 1,
-                y: last_y,
-            },
-            Direction::Right => Block {
-                x: last_x + 1,
-                y: last_y,
-            },
+        let (head_x, head_y) = self.head_position();
+        let (new_x, new_y) = match self.direction {
+            Direction::Up => (head_x, head_y - 1),
+            Direction::Down => (head_x, head_y + 1),
+            Direction::Left => (head_x - 1, head_y),
+            Direction::Right => (head_x + 1, head_y),
         };
-        self.body.push_front(new_block);
-        let removed_block = self.body.pop_back().unwrap();
-        self.tail = Some(removed_block);
+
+        // Reuse the tail block instead of allocating a new one
+        let mut tail_block = self.body.pop_back().unwrap();
+        tail_block.x = new_x;
+        tail_block.y = new_y;
+        self.body.push_front(tail_block);
     }
 
     pub fn head_direction(&self) -> Direction {
@@ -105,13 +87,8 @@ impl Snake {
     }
 
     pub fn next_head(&self, dir: Option<Direction>) -> (i32, i32) {
-        let (head_x, head_y): (i32, i32) = self.head_position();
-
-        let mut moving_dir = self.direction;
-        match dir {
-            Some(d) => moving_dir = d,
-            None => {}
-        }
+        let (head_x, head_y) = self.head_position();
+        let moving_dir = dir.unwrap_or(self.direction);
 
         match moving_dir {
             Direction::Up => (head_x, head_y - 1),
@@ -122,22 +99,15 @@ impl Snake {
     }
 
     pub fn restore_tail(&mut self) {
-        let blk = self.tail.clone().unwrap();
-        self.body.push_back(blk);
+        if let Some(blk) = self.tail.take() {
+            self.body.push_back(blk);
+        }
     }
 
     pub fn overlap_tail(&self, x: i32, y: i32) -> bool {
-        let mut ch = 0;
-        for block in &self.body {
-            if x == block.x && y == block.y {
-                return true;
-            }
-
-            ch += 1;
-            if ch == self.body.len() - 1 {
-                break;
-            }
-        }
-        return false;
+        self.body
+            .iter()
+            .take(self.body.len() - 1)
+            .any(|block| block.x == x && block.y == y)
     }
 }
